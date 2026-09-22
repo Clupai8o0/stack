@@ -1,0 +1,75 @@
+{
+ "_about": "Copy to $CLUPAI_HOME/guardrails.json (install.sh does this and expands ~, because dir must be an absolute path). Sessions add rules with `hooks/guardrails.py learn`. These are lessons of the kind sessions learn, with names removed.",
+ "rules": [
+  {
+   "id": "g1",
+   "match": "^make (?:deploy|healthcheck)-\\S*staging\\b",
+   "dir": "~/projects/client-work/myapp",
+   "action": "queue",
+   "queue": "myapp:deploy-staging",
+   "why": "one shared staging: a second deploy mid-deploy clobbers the first; one session deploys at a time",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  },
+  {
+   "id": "g2",
+   "match": "^git push \\S+ (?:\\S+:)?staging\\b",
+   "dir": "~/projects/client-work/myapp",
+   "action": "queue",
+   "queue": "myapp:deploy-staging",
+   "why": "pushing to the shared staging branch is part of the staging deploy; take the staging turn first",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  },
+  {
+   "id": "g3",
+   "match": "^make deploy-\\S*prod\\b",
+   "dir": "~/projects/client-work/myapp",
+   "action": "stop",
+   "why": "could break: production for all users. Prod needs owner sign-off and a quiet time window. Instead: confirm both with the user before deploying",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  },
+  {
+   "id": "g4",
+   "match": "^git commit(?: [^|;&]{0,80})? -[A-Za-z]*a[A-Za-z]*(?: |$)",
+   "dir": "~/projects/client-work/myapp",
+   "action": "stop",
+   "why": "could break: a deploy script rewrites a tracked config file in place, and commit -a picks it up. Instead: restore that file, then add files by name",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  },
+  {
+   "id": "g5",
+   "match": "^gcloud secrets versions disable",
+   "action": "stop",
+   "why": "could break: every deploy that mounts that secret at :latest. 'latest' is the highest version number even when it is disabled. Instead: add a new version first, then disable the old one",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  },
+  {
+   "id": "g6",
+   "match": "gh pr create",
+   "dir": "~/projects/open-source/upstream-repo",
+   "action": "stop",
+   "why": "could break: commits carry AI co-author trailers the upstream project does not accept. Instead: rewrite the trailers, then open the PR",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  },
+  {
+   "id": "g7",
+   "match": "^[A-Z0-9_= ]{0,60}(?:bash )?\\S*scripts/deploy_worker\\.sh",
+   "action": "warn",
+   "why": "could break: the script uses --set-env-vars, which REPLACES the service's env and erases hand-set vars. Instead: use --update-env-vars, or re-add them after",
+   "by": "example",
+   "learned": "2026-09-01 00:00:00 +0000",
+   "hits": 0
+  }
+ ]
+}

@@ -1,0 +1,63 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/codex_hook.py session-start",
+            "timeout": 20,
+            "statusMessage": "Shared session context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/codex_hook.py prompt",
+            "timeout": 20,
+            "statusMessage": "Effort gate and claims"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "shell|local_shell|exec_command|bash|Bash|apply_patch|edit_file|write_file|create_file|Edit|Write|MultiEdit|NotebookEdit|Agent|Task|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/codex_hook.py pretool",
+            "timeout": 20,
+            "statusMessage": "Claims, queues and guardrails"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/codex_hook.py stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/codex_hook.py session-end",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "_about": "Copy to tools/export.local.json (git-ignored) and fill in. Rewrites run in order, before the generic ones in export.py.",
+  "sources": {
+    "shared": "~/notes/agent-layer",
+    "skills": "~/notes/skills",
+    "bakeoff": "~/projects/lab/bakeoff"
+  },
+  "drop_hooks_matching": ["some-private-hook"],
+  "rewrites": [
+    ["~/notes/agent-layer", "$CLUPAI_HOME"],
+    ["~/notes/skills", "$CLUPAI_HOME/skills"],
+    ["re:/home/jane\\b", "$HOME"],
+    ["acme-corp", "client-work"]
+  ],
+  "file_rewrites": {
+    "skills/_core/token-economy/SKILL.md": [
+      ["| confidential | acme-corp |", "| confidential | client work |"]
+    ]
+  }
+}

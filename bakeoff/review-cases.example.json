@@ -1,0 +1,14 @@
+[
+  {
+    "_about": "Copy this list to review-cases.json. Each case is a commit whose tests passed but a later commit fixed real bugs in it. bugs is the answer key for blind grading.",
+    "id": "c1-rate-limit",
+    "repo": "~/projects/side-project/backend",
+    "commit": "abc1234",
+    "fixed_by": "def5678",
+    "what": "adds a per-user rate limit to the invite endpoint",
+    "bugs": {
+      "b1": "limit keyed on IP, not user, so users behind one NAT share a bucket",
+      "b2": "counter never expires when the write fails"
+    }
+  }
+]

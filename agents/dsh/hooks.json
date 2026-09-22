@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/agent_hook.py --agent dsh prompt",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "bash|write|edit|multi_edit|apply_patch|subagent|Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/agent_hook.py --agent dsh pretool",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/agent_hook.py --agent dsh stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "_comment": "dsh bridge config. No SessionStart: dsh runs it detached, so its context lands after the answer and starts an extra turn. agent_hook.py gives dsh its start-of-session context on the first prompt instead."
+}

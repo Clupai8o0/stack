@@ -1,0 +1,24 @@
+{
+  "_about": "Copy to tasks.json. Each task is a real commit: the runner resets the repo to its parent, adds the commit's test files, gives the model the task text, then runs the judge commands. validate checks each task fails at the parent and passes at the commit.",
+  "repo": "~/projects/side-project/backend",
+  "intro": "a Node 22 backend with Firebase Cloud Functions",
+  "links": ["node_modules"],
+  "tasks": [
+    {
+      "id": "t1-email-gate",
+      "size": "small",
+      "commit": "abc1234",
+      "tests": ["lib/emailGate.test.js"],
+      "judge": ["node lib/emailGate.test.js"],
+      "task": "Describe the change as the issue or PR did, with the edge cases the tests check. Do not mention the tests."
+    },
+    {
+      "id": "t2-dedupe",
+      "size": "medium, multi-file",
+      "commit": "def5678",
+      "tests": ["lib/dedupe.test.js", "test/dedupe-collisions.test.js"],
+      "judge": ["node lib/dedupe.test.js", "node test/dedupe-collisions.test.js"],
+      "task": "One paragraph: what to change, what must keep working, what must be refused."
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Denylist format (the real list is tools/denylist.local.txt, which git ignores)
+#
+# The leak scan in tools/export.py fails if any published file contains a term from denylist.local.txt.
+# Terms are private by nature (client names, your real name, email, machine name), so they never go in git.
+#
+# One term per line. Blank lines and lines starting with # are ignored.
+#   plain line   case-insensitive substring, e.g.   acme-corp
+#   re:<regex>   case-insensitive regex, e.g.       re:\bjane\b
+#
+# Always add:
+#   your real name, usernames, email addresses, machine and host names
+#   every client, employer and private project name
+#   cloud project ids, internal domains, keychain items that name a person or client
+#
+# Built-in patterns (API keys, tokens, long hex, private keys, home paths, personal emails) are
+# checked even without a local list.

@@ -1,0 +1,17 @@
+{
+  "_about": "Which outside models may see a folder's code. Longest matching path wins. Unlisted folders get 'default'. Copy to $CLUPAI_HOME/model-policy.json and edit. second_opinion.py and memory_recall.py read it.",
+  "default": "confidential",
+  "routes": {
+    "confidential": ["codex"],
+    "open": ["codex", "dsh", "kimi", "opencode"],
+    "personal": ["codex", "dsh", "kimi", "opencode", "agy", "grok"]
+  },
+  "rules": [
+    {"path": "~/projects/client-work", "policy": "confidential"},
+    {"path": "~/notes", "policy": "confidential"},
+    {"path": "~/projects/open-source", "policy": "open"},
+    {"path": "~/study", "policy": "open"},
+    {"path": "~/projects/side-project", "policy": "personal"},
+    {"path": "~/clupai/bakeoff", "policy": "personal"}
+  ]
+}

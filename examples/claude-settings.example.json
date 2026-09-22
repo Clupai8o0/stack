@@ -1,0 +1,115 @@
+{
+  "_about": "Merge the hooks block into ~/.claude/settings.json (install.sh --settings does it with a backup). Paths use $CLUPAI_HOME, default ~/clupai.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/memory_guard.py session-start",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/claims.py session-start",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/memory_recall.py session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/effort_gate.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/claims.py prompt",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/memory_recall.py prompt",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Workflow|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/memory_guard.py pretool",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/claims.py pretool",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/claims.py failure",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLUPAI_HOME:-$HOME/clupai}\"/hooks/claims.py session-end",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "outputStyle": "On the go",
+  "permissions": {
+    "allow": [
+      "mcp__codex__codex",
+      "mcp__codex__codex-reply"
+    ]
+  }
+}
