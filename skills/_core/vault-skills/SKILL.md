@@ -1,6 +1,6 @@
 ---
 name: vault-skills
-description: Find and load a skill that is not installed. Use when a task needs specialised know-how that no installed skill covers, such as UI or UX design, animation or GSAP, brand and visual design, pptx or xlsx files, evaluation or context engineering, TDD or debugging method, or Obsidian formats. Looks it up in the skill library ($CLUPAI_HOME/skills) instead of keeping every skill installed.
+description: Find and load a skill that is not installed. Use when a task needs specialised know-how that no installed skill covers, such as UI or UX design, animation or GSAP, brand and visual design, pptx or xlsx files, evaluation or context engineering, TDD or debugging method, production-readiness or launch audits ("is X production ready?"), or Obsidian formats. Looks it up in the skill library ($CLUPAI_HOME/skills) instead of keeping every skill installed.
 ---
 
 # Vault skills
