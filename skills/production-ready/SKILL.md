@@ -1,6 +1,6 @@
 ---
 name: production-ready
-description: Audit an app, API, website, mobile app or CLI tool against a production-readiness checklist (security, auth, data, reliability, observability, standard endpoints, deploy, testing, privacy, billing, AI, mobile) and report what is missing, ranked. Use when the user asks "is this production ready", "what's missing before launch", "make this production ready", "launch checklist", or before shipping a project to real users or a client.
+description: Audit an app, API, website, mobile app or CLI tool against a production-readiness checklist (security incl. OWASP / CWE / MASVS / LLM Top 10 / ATT&CK lists, auth, data, reliability, observability, standard endpoints, deploy, testing, privacy, billing, AI, mobile) and report what is missing, ranked. Use when the user asks "is this production ready", "what's missing before launch", "make this production ready", "launch checklist", or before shipping a project to real users or a client.
 ---
 
 # Production-ready audit
@@ -16,6 +16,8 @@ first; change code only when the user asks.
      **3 Scale** (teams, enterprise buyers, many tenants). If unsure, pick the lower tier and say so.
 2. **Filter the checklist.** Keep items at the chosen tier and below whose tags match the project kind
    (untagged items always apply).
+   Add the matching lists from [security-lists.md](security-lists.md) (OWASP Top 10, API Top 10, CWE Top 25,
+   MASVS, LLM Top 10, ATT&CK logging), filtered the same way. Report their gaps with the rest, in one ranking.
 3. **Look for evidence, don't guess.** For each item, search the repo: config files, CI workflows, middleware,
    routes (`/health`, `/ready`, `/version`), rules files, migrations, tests, env handling. Mark each:
    - **Done**: point to the file that proves it.

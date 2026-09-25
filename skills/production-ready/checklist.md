@@ -13,6 +13,9 @@ Tags show which kind of project an item applies to: `web` site or web app, `api`
 
 ## 1. Security
 
+Then run the matching lists in [security-lists.md](security-lists.md): OWASP Top 10, API Top 10, CWE Top 25, MASVS,
+LLM Top 10, and ATT&CK for logging.
+
 - [ ] **1** No secrets in the repo or git history (gitleaks / trufflehog in CI); secrets in env or a secrets manager
 - [ ] **1** Dependencies scanned (`npm audit` / osv-scanner) and auto-updated (Dependabot / Renovate)
 - [ ] **1** `web` HTTPS everywhere, HSTS, secure cookies (`HttpOnly`, `Secure`, `SameSite`)
