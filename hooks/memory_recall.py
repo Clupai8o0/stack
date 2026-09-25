@@ -8,7 +8,7 @@ that apply to all work (feedback and user notes) and recalls the rest per prompt
            weighted by how rare each word is across all memories
   graph  = a memory linked by [[name]] from a strong match gets part of that match's score, so related memories
            come along even when they share no words with the prompt
-  scope  = memories are gathered from every account (main, cx, cm) for this folder and each folder above it, so a
+  scope  = memories are gathered from every account (main, cx) for this folder and each folder above it, so a
            memory one account wrote reaches the others, and Codex, OpenCode and dsh too
 
   memory_recall.py prompt [--agent A]         UserPromptSubmit hook: adds the top matches as context (each at most
@@ -16,9 +16,15 @@ that apply to all work (feedback and user notes) and recalls the rest per prompt
   memory_recall.py session-start [--agent A]  SessionStart hook: folds this session's MEMORY.md (Claude only) and,
                                               for other agents, recalls on the folder alone
   memory_recall.py search WORDS [--dir D]     CLI: rank memories for WORDS from folder D (default cwd)
+  memory_recall.py share [--check]            CLI: make every cx memory dir a link to main's store for the same
+                                              folder, merging what is in it (session-start does this per session)
   memory_recall.py fold [--all|--dir D] [--check]
                                               CLI: shrink MEMORY.md to the pinned memories and write the full
                                               catalogue to MEMORY.full.md (never loaded automatically)
+
+Shared store: main's ~/.claude/projects/<folder>/memory is the one memory dir per folder. Every other account's dir
+for that folder is a symlink to it, so both accounts read and write the same files. A merge never overwrites: when
+two different files share a name, the newer one wins and the other is kept in the store's .merged/ folder.
 
 Pinned = type feedback or user, or a MEMORY.md line containing "(pinned)" (remembered in .pins). Everything fails open.
 
@@ -28,13 +34,13 @@ the next fold re-adds a pointer for any pinned memory that has none. One narrow 
 for a memory of another type, appended in the moment between the fold's last read and its write, is lost with its
 pin; pin it again (or give the memory type feedback/user).
 """
-import glob, hashlib, json, math, os, re, subprocess, sys, time
+import contextlib, fcntl, filecmp, glob, hashlib, json, math, os, re, shutil, subprocess, sys, time
 CLUPAI_HOME = os.path.expanduser(os.environ.get('CLUPAI_HOME') or (
     '~/clupai' if os.path.isdir(os.path.expanduser('~/clupai'))
     else os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))  # where this repo is installed
 
 HOME = os.path.expanduser('~')
-CONFIG_DIRS = [os.path.join(HOME, d) for d in ('.claude', '.claude-exec', '.claude-alt')]
+CONFIG_DIRS = [os.path.join(HOME, d) for d in ('.claude', '.claude-exec')]
 STATE = os.path.join(HOME, '.local', 'state', 'memory-recall')
 TOP_K = 5              # memories per prompt at most
 MIN_SCORE = 6.0        # below this a match is noise (real matches score 11-32; stray words 3-5)
@@ -122,7 +128,10 @@ def origins_allowed(memdir, agent):
     see. A dir with no readable log is refused for outside models."""
     if agent not in OUTSIDE:
         return True
-    logs = sorted(glob.glob(os.path.join(os.path.dirname(memdir), '*.jsonl')), key=os.path.getmtime)[-200:]
+    slug = os.path.basename(os.path.dirname(os.path.abspath(memdir)))
+    logs = []                                   # the dir is shared, so every account's sessions may have written it
+    for cfg in CONFIG_DIRS:
+        logs += sorted(glob.glob(os.path.join(cfg, 'projects', slug, '*.jsonl')), key=os.path.getmtime)[-200:]
     seen = set()
     for f in logs:
         try:
@@ -149,7 +158,8 @@ def memory_dirs(cwd, own=None, agent='claude'):
             continue
         for cfg in CONFIG_DIRS:
             m = os.path.join(cfg, 'projects', slug_of(folder), 'memory')
-            if os.path.isdir(m) and origins_allowed(m, agent):
+            if os.path.isdir(m) and origins_allowed(m, agent) and \
+                    os.path.realpath(m) not in {os.path.realpath(x) for x in dirs}:   # a shared store counts once
                 dirs.append(m)
     if own and os.path.isdir(own):
         dirs = [own] + [x for x in dirs if os.path.realpath(x) != os.path.realpath(own)]
@@ -310,6 +320,121 @@ def atomic_write(path, text):
     os.replace(tmp, path)
 
 
+# ---------------------------------------------------------------- one shared store per folder
+
+def shared_memdir(memdir):
+    """main's memory dir for the same folder: the store every account's dir links to."""
+    return os.path.join(CONFIG_DIRS[0], 'projects', os.path.basename(os.path.dirname(os.path.abspath(memdir))), 'memory')
+
+
+def catalogue(memdir):
+    cat = ['# All memories in this folder (not loaded automatically; recalled per prompt by memory_recall.py)', '']
+    for n in sorted(load([memdir]), key=lambda n: n['slug']):
+        cat.append(f'- [{n["name"]}]({os.path.basename(n["path"])}) — {n["description"]}')
+    atomic_write(os.path.join(memdir, 'MEMORY.full.md'), '\n'.join(cat) + '\n')
+
+
+def merge_dir(src, dst, label):
+    """Move everything in src into dst. Never overwrites: the older of two different files goes to dst/.merged/."""
+    kept = os.path.join(dst, '.merged')
+    changed = 0
+
+    def aside(path, who, name):
+        base = f'{who}-{time.strftime("%Y%m%d-%H%M%S")}-{os.getpid()}'
+        n, out = 0, os.path.join(kept, f'{base}-{name}')
+        while os.path.lexists(out):
+            n += 1
+            out = os.path.join(kept, f'{base}-{n}-{name}')
+        shutil.move(path, out)
+
+    for name in sorted(os.listdir(src)):
+        s, d = os.path.join(src, name), os.path.join(dst, name)
+        if name == 'MEMORY.full.md':
+            os.remove(s)                        # regenerated from the files below
+        elif name in ('MEMORY.md', '.pins') and os.path.isfile(d) and os.path.isfile(s):
+            have = open(d, encoding='utf-8', errors='replace').read().splitlines()
+            links = {m.group(1) for m in (re.search(r'\]\(([^)]+\.md)\)', l) for l in have) if m}
+            add = [l for l in open(s, encoding='utf-8', errors='replace').read().splitlines()
+                   if l.strip() and l not in have and l.strip() != HUB
+                   and not ((m := re.search(r'\]\(([^)]+\.md)\)', l)) and m.group(1) in links)]
+            if add:
+                atomic_write(d, '\n'.join(have + add) + '\n')
+                changed += 1
+            os.remove(s)
+        elif not os.path.lexists(d):
+            shutil.move(s, d)
+            changed += 1
+        elif os.path.isfile(s) and os.path.isfile(d) and filecmp.cmp(s, d, shallow=False):
+            os.remove(s)
+        else:
+            os.makedirs(kept, exist_ok=True)
+            if os.path.isfile(s) and os.path.isfile(d) and os.path.getmtime(s) > os.path.getmtime(d):
+                aside(d, 'store', name)
+                shutil.move(s, d)
+            else:
+                aside(s, label, name)
+            changed += 1
+    return changed
+
+
+def share(memdir, check=False):
+    """Make memdir (a cx dir) a symlink to the shared store, merging its files in. Idempotent; returns what it did
+    or None. Leftovers of an interrupted merge (memory.merging-*) are merged on the next call."""
+    memdir = os.path.abspath(memdir)
+    target = shared_memdir(memdir)
+    if not any(memdir.startswith(os.path.join(c, 'projects') + os.sep) for c in CONFIG_DIRS[1:]):
+        return None                             # main's own store, or a config dir that is not one of ours
+    stranded = glob.glob(glob.escape(memdir) + '.merging-*')
+    if os.path.islink(memdir) and os.readlink(memdir) == target and not stranded:
+        return None
+    label = os.path.basename(memdir.split('/projects/')[0]).lstrip('.') or 'acct'
+    if check:
+        return 'would merge and link' if os.path.isdir(memdir) and not os.path.islink(memdir) else 'would link'
+    os.makedirs(STATE, exist_ok=True)
+    lock = os.path.join(STATE, 'share-' + hashlib.sha1(target.encode()).hexdigest()[:12] + '.lock')
+    with open(lock, 'a') as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)          # two sessions starting in one folder at once
+        if os.path.islink(target) or (os.path.lexists(memdir) and
+                                      os.path.realpath(memdir) == os.path.realpath(target) and
+                                      not os.path.islink(memdir)):
+            raise OSError(f'refusing to share {memdir}: the store {target} is a link or the same dir')
+        os.makedirs(target, exist_ok=True)
+        done = []
+        if os.path.islink(memdir) and os.readlink(memdir) != target:
+            os.unlink(memdir)
+        if not os.path.lexists(memdir):
+            os.symlink(target, memdir)
+            done.append('linked')
+        elif not os.path.islink(memdir):
+            old = f'{memdir}.merging-{os.getpid()}-{int(time.time())}'
+            os.rename(memdir, old)
+            os.symlink(target, memdir)          # writers land in the shared store from here on
+            stranded.append(old)
+            done.append('linked')
+        n, left = 0, []
+        for old in stranded:
+            n += merge_dir(old, target, label)
+            if os.listdir(old):
+                left.append(old)
+            else:
+                os.rmdir(old)
+        if stranded:
+            catalogue(target)
+            done.insert(0, f'merged {n}')
+        return ' and '.join(done) + (f' ({len(left)} dirs left: {", ".join(left)})' if left else '')
+
+
+def share_all(check=False):
+    for cfg in CONFIG_DIRS[1:]:
+        for m in sorted(glob.glob(os.path.join(cfg, 'projects', '*', 'memory'))):
+            try:
+                r = share(m, check)
+            except OSError as e:
+                r = f'FAILED {e}'
+            if r:
+                print(f'{r:28} {m.replace(HOME, "~")}')
+
+
 # ---------------------------------------------------------------- hooks
 
 def git(cwd, *args):
@@ -407,6 +532,10 @@ def hook(event):
     if event == 'session-start':
         own = own_memdir(data) if agent == 'claude' else None
         if own:
+            try:
+                share(own)                     # this account's dir -> the one shared store for the folder
+            except OSError:
+                pass
             fold(own)                          # this session already loaded MEMORY.md; the fold is for the next one
             return 0
         return emit('SessionStart', recall(data, agent, ''))
@@ -427,9 +556,12 @@ def cli():
         for s, n in ranked[:10]:
             print(f'{s:6.1f}  {n["name"]} — {n["description"][:90]}\n        {n["path"].replace(HOME, "~")}')
         return 0
+    if cmd == 'share':
+        share_all('--check' in sys.argv)
+        return 0
     if cmd == 'fold':
         check = '--check' in sys.argv
-        targets = (sorted(glob.glob(os.path.join(HOME, '.claude*', 'projects', '*', 'memory')))
+        targets = (sorted({os.path.realpath(d) for d in glob.glob(os.path.join(HOME, '.claude*', 'projects', '*', 'memory'))})
                    if '--all' in sys.argv else [arg('--dir', os.getcwd())])
         for d in targets:
             r = fold(d, check)

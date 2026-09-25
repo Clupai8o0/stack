@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copies live Claude sessions between accounts every 15s so SendMessage / ListAgents work across them. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.session-mirror</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__CLUPAI_HOME__/hooks/session_mirror.py</string>
+    <string>sync</string>
+  </array>
+  <key>StartInterval</key><integer>15</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardErrorPath</key><string>__HOME__/.local/state/session-mirror.log</string>
+</dict>
+</plist>

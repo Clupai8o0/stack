@@ -5,7 +5,7 @@ Source: `agents/grok/DELTA.md`, linked in as `~/.grok/rules/shared-agent-layer.m
 
 ## Where you fit
 
-You are grok (Grok Build CLI on Grok 4.7), one of several agents on this Mac: three Claude Code accounts, Codex,
+You are grok (Grok Build CLI on Grok 4.7), one of several agents on this Mac: two Claude Code accounts (`claude`, `cx`), Codex,
 OpenCode, dsh, kimi and you. You are usually called by Claude through `second_opinion.py` (route `grok:<model>`,
 e.g. `grok:grok-4.7`) for a review or second opinion on a personal project, often in a disposable worktree. The
 shared rules in `CLAUDE.md` apply to you too. Read "Claude" there as "any agent on this Mac".

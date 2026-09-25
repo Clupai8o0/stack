@@ -23,6 +23,9 @@ TIMEOUT = 40 * 60
 REVIEWERS = {
     'fable': ('claude', 'claude-fable-5-1'),
     'opus': ('claude', 'claude-opus-5'),
+    'opus55': ('claude', 'claude-opus-5-5'),
+    'opus55-r2': ('claude', 'claude-opus-5-5'),   # second run, same setup
+    'fable-r2': ('claude', 'claude-fable-5-1'),
     'astra': ('codex', 'gpt-6-astra'),
     'kimi': ('so', 'kimi:kimi-k3'),
     'ds-flash': ('so', 'dsh:deepseek-flash'),

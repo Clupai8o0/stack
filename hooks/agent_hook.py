@@ -360,7 +360,7 @@ def same_start(a, b):
 
     The window is also the limit of this identification: a pid reused within 5 seconds by a new Codex process
     whose payload carries no session id is indistinguishable, and inherits the old record. That is the same
-    residual the three Claude accounts already live with, and the worst case is a dead session's claims
+    residual the Claude accounts already live with, and the worst case is a dead session's claims
     staying held for their 4-hour expiry."""
     absent = lambda v: v is None or v == ''        # nothing to contradict
     if absent(a) or absent(b):

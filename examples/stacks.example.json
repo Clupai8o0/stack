@@ -1,0 +1,17 @@
+{
+ "_doc": "Shared dev stacks, used through hooks/stacks.py. Copy to $CLUPAI_HOME/stacks.json or run `stacks.py add NAME --dir DIR`. runtime: docker-desktop or orbstack. The reaper stops a stack nobody has leased for grace_min minutes.",
+ "runtime": "docker-desktop",
+ "grace_min": 45,
+ "lease_max_h": 8,
+ "unmanaged_h": 12,
+ "orphan_min": 60,
+ "keep": [],
+ "stacks": {
+  "my-app": {
+   "dir": "/absolute/path/to/my-app",
+   "project": "my-app",
+   "files": ["docker-compose.yml"],
+   "services": []
+  }
+ }
+}

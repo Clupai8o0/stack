@@ -3,18 +3,25 @@
 
 Usage:
   second_opinion.py PROMPT_FILE [--cwd DIR] [--network] [--confidential] [--write] [--ladder NAME,NAME,...] [--timeout SECS]
+                    [--review [--base BASE]] [--codex-effort low|medium|high|xhigh]
+
+  --review        code review of the git diff in --cwd: the uncommitted changes (plus BASE...HEAD with --base) go
+                  into the prompt with a brief that keeps the reviewer on it, and PROMPT_FILE adds what to focus
+                  on ('-' or an empty file for none). Much cheaper than letting a reviewer explore the repo.
+  --codex-effort  reasoning effort for codex without --write (default medium). Read-only codex runs are lean: no
+                  user config (plugins, MCP servers, hooks), only auth and the model from ~/.codex/config.toml.
 
 Prints the model's final answer on stdout. Prints one JSON line on stderr per attempt:
 {"provider":..., "model":..., "ok":..., "secs":..., "usage":..., "quota":..., "error":...}
 
-Ladder entries (default order is LADDER below, from the 17 Sep 2026 benchmark):
+Ladder entries (default order is LADDER below, from the 22 Sep 2026 app bake-off):
   codex                         Codex CLI, your ChatGPT plan
   agy:<model>                   Google Antigravity CLI, e.g. agy:gemini-3.8-flash-medium
   dsh:<model>                   DeepSeek's own CLI on the direct API (own key), e.g. dsh:deepseek-flash, dsh:deepseek-v4-pro
   kimi:<model>                  Kimi Code CLI on the Moonshot platform API (own key, keychain kimi-api), e.g. kimi:kimi-k3
   grok:<model>                  Grok Build CLI on your Grok plan (grok login), e.g. grok:grok-4.7, grok:grok-4.7-build-fast
-  opencode:<provider/model>     OpenCode Go, e.g. opencode:opencode-go/glm-5.3 (GLM, Grok, Qwen, MiniMax; DeepSeek goes
-                                through dsh and Kimi through kimi)
+  opencode:<provider/model>     OpenCode on OpenRouter, e.g. opencode:openrouter/z-ai/glm-5.3 (GLM, Grok, Qwen, MiniMax;
+                                DeepSeek goes through dsh and Kimi through kimi; OpenCode Go was dropped 22 Sep 2026)
 
 Safety:
   --write         lets the model edit files inside --cwd only (use a disposable worktree).
@@ -29,6 +36,15 @@ import argparse, glob, json, os, re, signal, subprocess, sys, tempfile, time
 CLUPAI_HOME = os.path.expanduser(os.environ.get('CLUPAI_HOME') or (
     '~/clupai' if os.path.isdir(os.path.expanduser('~/clupai'))
     else os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))  # where this repo is installed
+
+CODEX_EFFORT = 'medium'
+REVIEW_BRIEF = '''You are reviewing a code change. The diff is below. Report only real defects: bugs, security holes,
+data loss, race conditions, broken error handling, and behaviour that contradicts the stated intent. No style notes,
+no praise, no summary of the change. Read other files only to confirm or rule out a suspected defect, and keep it
+to the files the diff touches or calls. For each finding give: file:line, what goes wrong (concrete input or
+state -> wrong result), severity (high/medium/low), and the fix in one line. If you find nothing, say "No defects found."
+'''
+MAX_DIFF = 80000
 
 LADDER = ['codex', 'dsh:deepseek-flash', 'agy:gemini-3.8-flash-high', 'kimi:kimi-k3']  # app bake-off, 22 Sep 2026
 # OpenCode's own privacy policy allows using prompts to improve its services, several upstream
@@ -150,6 +166,38 @@ def kimi_usage(session):
     return tot
 
 
+def codex_model():
+    try:
+        import tomllib                             # Python 3.11+
+        with open(os.path.join(HOME, '.codex', 'config.toml'), 'rb') as f:
+            return tomllib.load(f).get('model')
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+def review_prompt(cwd, base, focus):
+    def git(*args, check=True):
+        r = subprocess.run(['git', '-C', cwd, *args], capture_output=True, text=True, errors='replace', timeout=60)
+        if check and r.returncode != 0:
+            raise SystemExit(f'git {" ".join(args)} failed: {r.stderr.strip()}')
+        return r.stdout if r.returncode == 0 else None
+    has_head = git('rev-parse', '--verify', '-q', 'HEAD', check=False) is not None
+    local = git('diff', 'HEAD') if has_head else git('diff', '--cached')  # no commits yet: what is staged
+    branch = git('diff', f'{base}...HEAD') if base else ''
+    names = sorted(set((git('diff', '--name-only', 'HEAD') if has_head else git('diff', '--cached', '--name-only'))
+                       .splitlines() + (git('diff', '--name-only', f'{base}...HEAD').splitlines() if base else [])))
+    untracked = [f for f in git('ls-files', '-z', '--others', '--exclude-standard').split('\0') if f]
+    diff = local + branch  # uncommitted work first: it is what a cut would otherwise lose
+    if not diff.strip() and not untracked:
+        raise SystemExit('--review: no changes to review')
+    if len(diff) > MAX_DIFF:
+        diff = (diff[:MAX_DIFF] + f'\n[diff cut at {MAX_DIFF} characters. Changed files, read any the diff above does '
+                f'not cover: {", ".join(names[:200])}]\n')
+    extra = f'\nNew untracked files (read them): {", ".join(untracked[:50])}\n' if untracked else ''
+    return (REVIEW_BRIEF + (f'\nFocus: {focus.strip()}\n' if focus.strip() else '') + extra +
+            f'\nRepository: {cwd}\n\n```diff\n{diff}```\n')
+
+
 def attempt(entry, prompt, cwd, network, timeout, write):
     t0 = time.time()
     kind, _, model = entry.partition(':')
@@ -170,6 +218,11 @@ def attempt(entry, prompt, cwd, network, timeout, write):
             else:
                 sandbox, run_dir = 'read-only', cwd
             cmd = ['codex', 'exec', '--skip-git-repo-check', '-C', run_dir, '-o', last_path, '-s', sandbox]
+            if not write:
+                # lean: skip plugins, MCP servers and hooks (~7k tokens on every call); keep auth and the model
+                cmd += ['--ignore-user-config', '-c', f'model_reasoning_effort={CODEX_EFFORT}']
+                if codex_model():
+                    cmd += ['-m', codex_model()]
             if network:
                 cmd += ['-c', 'sandbox_workspace_write.network_access=true']
             if not write:
@@ -327,8 +380,17 @@ def main():
                     help='auto reads model-policy.json for --cwd (default); unmatched folders are confidential')
     ap.add_argument('--confidential', action='store_true', help='same as --policy confidential')
     ap.add_argument('--write', action='store_true', help='allow edits inside --cwd only (use a disposable worktree)')
+    ap.add_argument('--review', action='store_true', help='review the git diff in --cwd (uncommitted changes)')
+    ap.add_argument('--base', default='', help='with --review: also review BASE...HEAD (the branch so far)')
+    ap.add_argument('--codex-effort', choices=['low', 'medium', 'high', 'xhigh'], default='medium')
     a = ap.parse_args()
-    prompt = open(a.prompt_file).read()
+    global CODEX_EFFORT
+    CODEX_EFFORT = a.codex_effort
+    prompt = '' if a.prompt_file == '-' else open(a.prompt_file).read()
+    if a.base and not a.review:
+        raise SystemExit('--base needs --review')
+    if a.review:
+        prompt = review_prompt(os.path.realpath(a.cwd), a.base, prompt)
     given_cwd = a.cwd
     cwd = os.path.realpath(given_cwd)
     if '"' in cwd or '\\' in cwd:  # would break out of the quoted paths in the sandbox profile

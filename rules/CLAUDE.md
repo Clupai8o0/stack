@@ -8,12 +8,12 @@ Lines marked **Example:** are one person's setup. Replace them with yours or del
 
 ## Many sessions, one brain
 
-Several agent sessions often run on the same projects at the same time. They do NOT share auto-memory,
-per-account skills or settings. Anything one session learns is invisible to the others unless it is
-written somewhere they can all read.
+Several agent sessions often run on the same projects at the same time. They share auto-memory (`hooks/memory_recall.py` links a second account's memory folders to
+the main account's at session start, merging their files), but NOT per-account skills or settings, and outside
+models have no auto-memory. Anything they all need must be written somewhere they can all read.
 
-**Example:** three Claude Code accounts on one Mac: `claude` (main, `~/.claude`), `cx` (second login,
-`~/.claude-exec`) and `cm` (one product only, `~/.claude-alt`), plus Codex, OpenCode, dsh and kimi.
+**Example:** two Claude Code accounts on one Mac: `claude` (main, `~/.claude`) and `cx` (second login,
+`~/.claude-exec`, the only second-account folder the scripts support), plus Codex, OpenCode, dsh and kimi.
 
 - **Durable learnings never live only in auto-memory.** Write them where the next session will read them:
   - about one project: that project's `CLAUDE.md` (or a doc it links to)
@@ -96,9 +96,9 @@ holds) and end the reply with one close line:
 
 Before spawning any subagent or workflow, follow the `token-economy` skill. Short form, measured Sep 2026:
 
-- Default worker: **Opus 5 at low effort.** Always pass `model` AND `effort`, or subagents inherit the session
+- Default worker: **Opus 5.5 at low effort.** Always pass `model` AND `effort`, or subagents inherit the session
   effort (xhigh under ultracode: 2.7x cost, no meaningful gain).
-- Sensitive writing and final judging: Opus 5 at high effort.
+- Sensitive writing and final judging: Opus 5.5 at high effort.
 - Sonnet 5 only where a test or script decides pass/fail. It invents facts in prose and misses review defects.
 - Codex for independent verification: same quality, almost no Claude usage.
 - "Cheap model executes, Opus reviews" costs more than Opus low alone. Don't.
@@ -106,7 +106,7 @@ Before spawning any subagent or workflow, follow the `token-economy` skill. Shor
   but every call at 600-900k costs about 3x a call at 200k (estimate). Prefer the handoff when another session may continue.
 - **Effort gate:** a hook makes every substantive reply start with `Effort: <now> now, <needed> needed (...)`.
   Early in a session, Claude stops and asks for `/effort <needed>` when the gap matters; later it only notes it.
-- **Effort is set by the user, not by Claude.** Changing it mid-session on Opus 5 drops the prompt cache, so
+- **Effort is set by the user, not by Claude.** Changing it mid-session on Opus drops the prompt cache, so
   suggest switching only right after a `/clear`. Agents get their own `effort`.
 
 ## Outside models
@@ -119,9 +119,9 @@ Policy by folder lives in `$CLUPAI_HOME/model-policy.json`. Unlisted folders are
 | open | open-source and study repos | Codex, DeepSeek (`dsh`), Kimi (`kimi`), OpenCode on OpenRouter |
 | personal | your own side projects | the above, plus Gemini (`agy`) and Grok Build (`grok`, plan quota) |
 
-Who does what (from the Sep 2026 bake-off, full table in the `token-economy` skill): **Opus 5** is the main worker
-and **Fable 5.1** takes the hardest tasks and final review. **DeepSeek V4 Flash** is the bulk worker, always
-followed by a review pass. Reviewers are **GPT-6 Astra (Codex) + Fable + DeepSeek Flash**; Grok Build stands in
+Who does what (from the Sep 2026 bake-off, full table in the `token-economy` skill): **Opus 5.5** is the main worker
+and the final reviewer (high effort); **Fable 5.1** takes only the hardest coding tasks. **DeepSeek V4 Flash** is the bulk worker, always
+followed by a review pass. Reviewers are **DeepSeek Flash + Opus 5.5 + GPT-6 Astra (Codex)**; Grok Build stands in
 when Codex is out of quota. Kimi K3 is a backup.
 
 Always call outside models through the script, so policy, sandbox and fallback apply:
@@ -137,8 +137,12 @@ python3 $CLUPAI_HOME/scripts/second_opinion.py PROMPT_FILE --cwd <project dir> [
 
 ## Code review
 
-- **Always review code with a second model.** Before calling any code change done, run Codex (read-only) over the
-  changed files as an independent reviewer, on top of your own tests and checks, and fold in anything it confirms.
+- **Always review code with a second model, tiered to save Codex quota.** Before calling a change done, run
+  `second_opinion.py - --cwd <repo> --review` over the diff, on top of your own tests, and fold in what it confirms.
+  - Every change: `--ladder dsh:deepseek-flash` where policy allows it.
+  - Risky changes (auth, security, database rules, payments, migrations or deletes, concurrency, shipped to a
+    client, or over ~300 lines) also get `--ladder codex`.
+  - Codex out of quota: an Opus 5.5 review subagent at high effort.
 
 ## Documents for the user's review
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Claude Code statusline shared by all three accounts (main, cx, cm). Session JSON on stdin, one line out.
+"""Claude Code statusline shared by both accounts (main, cx). Session JSON on stdin, one line out.
 
-Shows: account · model · effort │ folder · branch │ context │ 5h · week │ cost · lines │ claims · memories
+Shows: account · model · effort │ folder · branch │ context · compactions │ 5h · week │ cost · lines │ claims · memories
 Colours come from palette.json (run palette.py, or kitty-accent, to change them). It runs on every render, so it
 must stay fast: no network, git capped at 0.5 s, the transcript read only from its tail.
 
@@ -61,7 +61,7 @@ def level(pct):
 
 def account():
     d = os.path.basename((os.environ.get('CLAUDE_CONFIG_DIR') or '~/.claude').rstrip('/'))
-    return {'.claude': 'main', '.claude-exec': 'cx', '.claude-alt': 'cm'}.get(d, d.lstrip('.') or 'main')
+    return {'.claude': 'main', '.claude-exec': 'cx'}.get(d, d.lstrip('.') or 'main')
 
 
 def tail(path, size):
@@ -118,6 +118,40 @@ def context(data):
     if pct is None and tokens:
         pct = tokens / size * 100
     return tokens, (min(100, round(pct)) if pct is not None else None)
+
+
+def compactions(data):
+    """How often this session was compacted (auto or /compact): the compact_boundary lines in its transcript.
+    Only the bytes added since the last render are read; the offset and count are kept per session."""
+    path, sid = data.get('transcript_path') or '', os.path.basename(data.get('session_id') or '')
+    if not path or not sid:
+        return 0
+    cache = os.path.join(STATE, 'statusline', f'compacts-{sid}.json')
+    try:
+        off, n = json.load(open(cache))
+    except (OSError, ValueError, TypeError):
+        off, n = 0, 0
+    try:
+        with open(path, 'rb') as f:
+            end = f.seek(0, os.SEEK_END)
+            if end < off:
+                off, n = 0, 0                                 # transcript was rewritten; count again
+            if end == off:
+                return n
+            f.seek(off)
+            chunk = f.read(end - off)
+    except OSError:
+        return n
+    cut = chunk.rfind(b'\n') + 1                              # whole lines only; a half-written one waits
+    n += chunk[:cut].count(b'"subtype":"compact_boundary"')   # unescaped quotes: a real entry, not quoted text
+    try:
+        tmp = f'{cache}.{os.getpid()}'
+        with open(tmp, 'w') as f:
+            json.dump([off + cut, n], f)
+        os.replace(tmp, cache)
+    except OSError:
+        pass
+    return n
 
 
 def reset_in(ts):
@@ -199,11 +233,17 @@ def main():
         where.append(fg('branch', f' {branch}') + (fg('dirty', ' ●') if dirty else fg('clean', ' ✓')))
     groups.append(' '.join(where))
 
-    # context
+    # context · compactions (1 dim, 2 yellow, 3+ red: past that a /clear plus a handoff keeps more)
     tokens, pct = context(data)
+    ctx = []
     if pct is not None:
         k = f'{tokens / 1000:.0f}k ' if tokens >= 1000 else ''
-        groups.append(fg(level(pct), f'󰘦 {k}{pct}%'))
+        ctx.append(fg(level(pct), f'󰘦 {k}{pct}%'))
+    c = compactions(data)
+    if c:
+        ctx.append(fg('dim' if c == 1 else ('warn' if c == 2 else 'bad'), f'󰡍 {c}'))
+    if ctx:
+        groups.append(' '.join(ctx))
 
     # 5-hour and weekly subscription limits
     limits = []

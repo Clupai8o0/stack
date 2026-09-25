@@ -40,6 +40,9 @@ ALLOWLIST = [
     (SHARED, 'hooks/memory_recall.py', 'hooks/memory_recall.py'),
     (SHARED, 'hooks/effort_gate.py', 'hooks/effort_gate.py'),
     (SHARED, 'hooks/codex_hook.py', 'hooks/codex_hook.py'),
+    (SHARED, 'hooks/stacks.py', 'hooks/stacks.py'),
+    (SHARED, 'hooks/reset.py', 'hooks/reset.py'),
+    (SHARED, 'hooks/session_mirror.py', 'hooks/session_mirror.py'),
     (SHARED, 'ui/statusline.py', 'ui/statusline.py'),
     (SHARED, 'ui/palette.py', 'ui/palette.py'),
     (SHARED, 'ui/palette.json', 'ui/palette.json'),
@@ -55,6 +58,10 @@ ALLOWLIST = [
     (SHARED, 'sync-agents.py', 'scripts/sync-agents.py'),
     (SKILLS, '_core/token-economy/SKILL.md', 'skills/_core/token-economy/SKILL.md'),
     (SKILLS, '_core/token-economy/scripts/second_opinion.py', 'scripts/second_opinion.py'),
+    (SKILLS, '_core/token-economy/scripts/cx_run.py', 'skills/_core/token-economy/scripts/cx_run.py'),
+    (SHARED, 'usage_report.py', 'scripts/usage_report.py'),
+    (SKILLS, 'engineering/production-ready/SKILL.md', 'skills/production-ready/SKILL.md'),
+    (SKILLS, 'engineering/production-ready/checklist.md', 'skills/production-ready/checklist.md'),
     (SKILLS, '_core/tool-scoping/SKILL.md', 'skills/_core/tool-scoping/SKILL.md'),
     (SKILLS, '_core/vault-skills/SKILL.md', 'skills/_core/vault-skills/SKILL.md'),
     (SKILLS, '_tools/build_index.py', 'scripts/build_index.py'),
@@ -119,31 +126,38 @@ CODE_REWRITES += [
     ('', r'your SuperGrok plan', 'your Grok plan'),
     ('.md', r'\bno gain\b', 'no meaningful gain'),
     ('scripts/build_index.py', r'skills/_tools/build_index\.py', 'scripts/build_index.py'),
+    ('.md', r'claude-shared/usage_report\.py', 'scripts/usage_report.py'),
+    ('', r'the three Claude accounts', 'the Claude accounts'),
+    ('hooks/reset.py', r' \(guardrail g25\)', ''),
 ]
-
-BACKUP_FN = '''def backup(path, tag):
-    """Copy path to <path>.<tag>-<time>, never over an existing backup. Returns the backup path."""
-    stamp = time.strftime('%Y%m%d-%H%M%S')
-    dst, n = f'{path}.{tag}-{stamp}', 1
-    while os.path.lexists(dst):
-        dst, n = f'{path}.{tag}-{stamp}-{n}', n + 1
-    shutil.copy2(path, dst)
-    return dst
-
-
-'''
 
 # Safety patches for the public copy of sync-agents.py. Each is an exact literal that must appear exactly `count`
 # times after the rewrites above. If the source changed so a patch no longer applies, the export FAILS (exit 3).
 SYNC = 'scripts/sync-agents.py'
 PATCHES = [
-    (SYNC, 1, 'import argparse, filecmp, glob, json, os, re, shutil, subprocess, sys\n',
-     'import argparse, filecmp, glob, json, os, re, shutil, subprocess, sys, time\n'),
-    # backups get a timestamp and never overwrite an earlier backup
-    (SYNC, 1, 'def say(kind, what):\n', BACKUP_FN + 'def say(kind, what):\n'),
-    (SYNC, 1, "shutil.copy2(patch, patch + '.bak-shared-agent-layer')", "backup(patch, 'bak-shared-agent-layer')"),
-    (SYNC, 2, "shutil.copy2(path, path + '.bak-shared-agent-layer')", "backup(path, 'bak-shared-agent-layer')"),
-    (SYNC, 2, "shutil.copy2(path, path + '.bak-ui')", "backup(path, 'bak-ui')"),
+    # tomllib is Python 3.11+; stock macOS python3 is 3.9, so load it lazily and skip the model read without it
+    ('scripts/second_opinion.py', 1, 'signal, subprocess, sys, tempfile, time, tomllib\n', 'signal, subprocess, sys, tempfile, time\n'),
+    ('scripts/second_opinion.py', 1, "    try:\n        with open(os.path.join(HOME, '.codex', 'config.toml'), 'rb') as f:\n",
+     "    try:\n        import tomllib                             # Python 3.11+\n"
+     "        with open(os.path.join(HOME, '.codex', 'config.toml'), 'rb') as f:\n"),
+    ('scripts/second_opinion.py', 1, "    except (OSError, ValueError):\n        return None\n",
+     "    except (ImportError, OSError, ValueError):\n        return None\n"),
+    # usage_report.py: the report note lives in the repo root, not a vault three folders up
+    ('scripts/usage_report.py', 1,
+     "VAULT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))\n",
+     "VAULT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))   # the repo root\n"),
+    ('scripts/usage_report.py', 1, "NOTE = os.path.join(VAULT, '30-resources', 'claude-usage.md')\n",
+     "NOTE = os.path.join(VAULT, 'claude-usage.md')\n"),
+    ('scripts/usage_report.py', 1, 'What the three Claude Code accounts spent', 'What your Claude Code accounts spent'),
+    # no stacks.json yet: start empty instead of crashing (`stacks.py add` creates it)
+    ('hooks/stacks.py', 1, "def load_config():\n    with open(CONFIG) as f:\n        cfg = json.load(f)\n",
+     "def load_config():\n    try:\n        with open(CONFIG) as f:\n            cfg = json.load(f)\n"
+     "    except FileNotFoundError:\n        cfg = {'runtime': 'docker-desktop', 'stacks': {}}\n"),
+    # the Obsidian graph maps are private to the vault; the public index builder skips them
+    ('scripts/build_index.py', 1,
+     "# Keep the Obsidian graph maps in step with the index.\n"
+     "import subprocess, sys\n"
+     "subprocess.run([sys.executable, os.path.join(LIB, '_tools', 'build_graph_maps.py')], check=False)\n", ''),
     # tomllib is Python 3.11+; older Pythons skip the parse check instead of crashing
     (SYNC, 1, '    import tomllib\n',
      '    try:\n'
@@ -164,13 +178,13 @@ PATCHES = [
      "    if a.repos is not None and (not a.only or a.only == 'projects'):\n"
      "        install_project_rules(a.repos or REPO_ROOTS, a.check)\n"),
     (SYNC, 1,
-     "                link(claude_md, os.path.join(repo, 'AGENTS.md'), check)\n"
+     "                link(claude_md, agents_md, check)\n"
      "                if os.path.exists(os.path.join(repo, '.git')):   # an umbrella folder is not a repo\n"
      "                    git_ignore_locally(repo, 'AGENTS.md', check)\n",
      "                top = git(repo, 'rev-parse', '--show-toplevel')\n"
      "                if not top or os.path.realpath(top) != os.path.realpath(repo):\n"
      "                    continue                       # only a repo's own top level, never a subfolder or umbrella\n"
-     "                link(claude_md, os.path.join(repo, 'AGENTS.md'), check)\n"
+     "                link(claude_md, agents_md, check)\n"
      "                git_ignore_locally(repo, 'AGENTS.md', check)\n"),
     # UI changes are opt-in
     (SYNC, 1, "    if not a.only or a.only == 'ui':\n        install_ui(a.check)\n",

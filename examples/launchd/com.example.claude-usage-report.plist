@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Weekly spend report (Saturday 09:00): adds one row to claude-usage.md in the repo root. Reads transcripts only. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.claude-usage-report</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__CLUPAI_HOME__/scripts/usage_report.py</string>
+    <string>--write</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/claude-usage-report.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/claude-usage-report.log</string>
+  <key>LowPriorityIO</key><true/>
+  <key>Nice</key><integer>10</integer>
+</dict>
+</plist>

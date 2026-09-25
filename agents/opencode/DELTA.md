@@ -6,8 +6,9 @@ Generated. Source: `agents/opencode/DELTA.md` (this part) plus
 
 ## Where you fit
 
-You are OpenCode (running Kimi, GLM, Qwen, Grok or a local model), one of several agents on this
-Mac: three Claude Code accounts, Codex, dsh and you. The rules after the line apply to you too.
+You are OpenCode (GLM, Qwen, Grok or MiniMax on OpenRouter, for second opinions; or a local Qwen in LM Studio),
+one of several agents on this Mac: two Claude Code accounts (`claude`, `cx`), Codex, dsh, kimi, grok and you.
+DeepSeek and Kimi never run through you; they have their own CLIs (dsh, kimi). The rules after the line apply to you too.
 Read "Claude" there as "any agent on this Mac".
 
 | | |
@@ -16,7 +17,7 @@ Read "Claude" there as "any agent on this Mac".
 | Claims, queues, guardrails | The `shared-agent-layer` plugin runs the same scripts. A tool call it blocks is a deny: stop and say so |
 | Skills | `~/.config/opencode/skills/` holds the same skills as Claude |
 | Commands | `~/.config/opencode/commands/` holds the same slash commands |
-| Memory | Relevant memories from every Claude account are recalled into your context per message. Write durable findings to the project's `CLAUDE.md` or the vault, never only in chat |
+| Memory | Relevant memories from the Claude accounts' shared memory (one store per folder since 2026-09-24) are recalled into your context per message. Write durable findings to the project's `CLAUDE.md` or the vault, never only in chat |
 
 ## What is different for you
 

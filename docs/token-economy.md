@@ -8,15 +8,16 @@ The enforced version is the `token-economy` skill (`skills/_core/token-economy/S
 
 | Rule | Evidence (Sep 2026) |
 |---|---|
-| Default subagent: Opus 5, low effort | 96-100% on every scored task, $0.33/task |
+| Default subagent: Opus 5.5, low effort | Opus 5 low scored 96-100% on every task at $0.33/task; Opus 5.5 matched Opus 5 in the bake-off at 22% less cost (not re-run at low effort) |
 | Always pass `model` and `effort` to subagents | They inherit session effort; xhigh costs 2.7x ($0.90 vs $0.33) with no meaningful gain |
-| Opus 5 high only for text people read, and final judging | Best writing, 8.8/10, $0.53/task |
+| Opus 5.5 high only for text people read, and final judging | Opus 5 high wrote best, 8.8/10, $0.53/task; Opus 5.5 high found more review bugs than Fable 5.1 at ~37% of the cost |
 | Sonnet 5 only when a test decides pass/fail | Missed 25% of review defects and invented facts in prose |
 | No "cheap model works, Opus reviews" | $0.78 vs $0.33 for Opus low alone, same score |
 | Do one-line lookups inline, not in an agent | Every agent starts with setup tokens (estimate: 30-50k) |
 | Reset context near 200k | A call at 600-900k costs about 3x a call at 200k (estimate: $0.38 vs $0.13) |
+| Auto-compact at 250k in every account | In one week, 59% of all Claude spend was on calls past 200k context (95 of 310 sessions grew past it) |
 | `/compact` and `/clear` + handoff cost the same | $0.81 vs $0.69 at 563k; pick the handoff if another session continues |
-| Don't switch effort mid-session on Opus 5 | It drops the prompt cache: the next call re-reads everything at full price |
+| Don't switch effort mid-session on Opus | It drops the prompt cache: the next call re-reads everything at full price |
 | Review with an outside model | Codex review costs almost no Claude usage (GPT-6 Astra since the bake-off) |
 | Keep agents short; split past ~100 steps | 10 long agents were 71% of past Opus usage |
 | Keep installed skills small | The skill listing cost tokens in every agent (estimate: ~7.5k before cleanup) |
@@ -33,7 +34,7 @@ Goal: <one sentence>
 Done when: <tests pass / page shows X / numbers match Y>
 Scope: <dirs or files>. Don't touch: <dirs, branches, deploys>
 Context: read <AGENTS.md / handoff.md> first, nothing else up front
-Run it: workers claude-opus-5 low, final check opus-5 high or Codex, max 4 agents at once
+Run it: workers claude-opus-5-5 low, final check opus-5-5 high or Codex, max 4 agents at once
 Finish with the recap. No questions mid-work; put decisions in the recap checklist.
 ```
 
@@ -45,22 +46,37 @@ Finish with the recap. No questions mid-work; put decisions in the recap checkli
 | Situation | Main session | Workers | Checked by |
 |---|---|---|---|
 | Quick question or small edit | normal effort, no agents | none | you |
-| Normal feature or bug | high effort | Opus 5 low, pinned | tests, then Codex |
-| Big audit, migration, wide sweep | workflow | Opus 5 low, pinned per stage | Opus 5 high or Codex |
-| Text someone else reads | Opus 5 high writes it | none | Codex or a second Opus pass |
+| Normal feature or bug | high effort | Opus 5.5 low, pinned | tests, then an outside review |
+| Big audit, migration, wide sweep | workflow | Opus 5.5 low, pinned per stage | Opus 5.5 high or Codex |
+| Text someone else reads | Opus 5.5 high writes it | none | Codex or a second Opus pass |
 
 ## Unclear scope
 
 1. Scope at `/effort xhigh` in its own short session. Write the result to a file.
-2. `/clear`, `/effort high`, and execute from that file with Opus 5 low workers.
+2. `/clear`, `/effort high`, and execute from that file with Opus 5.5 low workers.
 
 ## Mixed-model flow (open and personal projects only)
 
-1. Claude (Opus 5 high) writes the spec and acceptance tests into the repo.
+1. Claude (Opus 5.5 high) writes the spec and acceptance tests into the repo.
 2. Make a disposable worktree: `git worktree add ../wt-<task> -b <task>`.
 3. Delegate: `second_opinion.py spec.md --cwd ../wt-<task> --write --ladder dsh:deepseek-flash`.
 4. Claude runs the tests, reads the diff, fixes small things, merges. Then a review pass.
 5. Only worth it when the spec is clear and the change is big. For small edits, start-up and review cost as much as doing it.
+
+## Context size
+
+**Most spend goes on calls with a huge context, so cap it.** Every call re-reads the whole context.
+
+| Measure | How |
+|---|---|
+| Auto-compact at 250k, not near 1M | `sync-agents.py --ui` sets `CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000` for every account; `/autocompact` changes one session |
+| Reset yourself at a break point | Write `<project>/.claude/handoff.md`, then `hooks/reset.py request clear` (or `request compact --focus "..."`). The Stop hook types the command when the turn ends and the fresh context gets the handoff |
+| When to reset | Instructions are in a plan or handoff and context is over ~100k; a milestone is done and it is over ~150k; or after the 2nd compaction (each compaction keeps about half the detail of the one before) |
+| Never reset | With background tasks or agents running, a queue turn held, a result the user still has to read, from a subagent, or mid-debug before findings are written down |
+| Check it weekly | `scripts/usage_report.py` prints the share of spend past 200k; `--write` keeps one row per week |
+
+`reset.py` only works in kitty (it types into the window with kitty remote control). It refuses without a fresh
+handoff and past 3 resets an hour; `reset.py off` turns it off everywhere.
 
 ## Other hygiene
 

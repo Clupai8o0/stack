@@ -21,8 +21,9 @@ Everything is a symlink back to this shared folder ($CLUPAI_HOME), so there is o
   commands  ~/.codex/prompts, ~/.config/opencode/commands <- the same slash commands
   projects  <repo>/AGENTS.md        <- that repo's CLAUDE.md, git-ignored locally
   ui        ui/palette.json  regenerated from the kitty accent (ui/palette.py)
-            <each Claude config dir>/statusline.py <- ui/statusline.py, and settings.json statusLine, theme and
-                                                  the Codex MCP allow rule
+            <each Claude config dir>/statusline.py <- ui/statusline.py, and settings.json statusLine, theme,
+                                                  the Codex MCP allow rule and env CLAUDE_ENV (auto-compact window),
+                                                  and the CLAUDE_HOOKS rows (agent-requested resets, hooks/reset.py)
             (OpenCode keeps its own default theme on purpose: the owner prefers it, 2026-09-21)
             ~/.codex/config.toml [tui]  status_line, terminal_title and theme set to the shared list
 
@@ -87,8 +88,17 @@ COMMANDS = [c for c in os.environ.get('CLUPAI_COMMANDS', '').split(',') if c]  #
 # Repos whose CLAUDE.md should also load in Codex. Anything under here with a CLAUDE.md and a .git.
 REPO_ROOTS = [os.path.expanduser(p) for p in os.environ.get('CLUPAI_REPOS', '~/projects').split(os.pathsep)]
 
-CLAUDE_HOMES = [os.path.join(HOME, d) for d in ('.claude', '.claude-exec', '.claude-alt')]  # main, cx, cm
+CLAUDE_HOMES = [os.path.join(HOME, d) for d in ('.claude', '.claude-exec')]  # main, cx
 CLAUDE_ALLOW = ['mcp__codex__codex', 'mcp__codex__codex-reply']  # the Codex review gate runs without a prompt
+# settings.json env for every Claude account. 23 Sep 2026: about 60% of Claude spend went on calls with more than 200k
+# tokens of context (usage_report.py), so sessions auto-compact at a 250k window instead of near 1M. /autocompact
+# changes it for one session.
+CLAUDE_ENV = {'CLAUDE_CODE_AUTO_COMPACT_WINDOW': '250000'}
+# Hooks every Claude account must have, as (event, matcher or None, command, timeout). Added when missing, never
+# removed or reordered; the older hooks in settings.json were added by hand and stay as they are.
+RESET = os.path.join(SHARED, 'hooks', 'reset.py')
+CLAUDE_HOOKS = [('Stop', None, f'python3 {RESET} stop', 10),
+                ('SessionStart', 'clear|compact', f'python3 {RESET} session-start', 10)]
 CLAUDE_THEME = 'dark-ansi'   # Claude's theme that draws in the terminal's own 16 colours, i.e. kitty's Catppuccin
 CODEX_TUI = {   # Codex has no custom statusline command; these are its closest built-in items
     'status_line': ['model-with-reasoning', 'current-dir', 'git-branch', 'context-used', 'five-hour-limit',
@@ -107,16 +117,6 @@ def git(cwd, *args):
         return r.stdout.strip() if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         return None
-
-
-def backup(path, tag):
-    """Copy path to <path>.<tag>-<time>, never over an existing backup. Returns the backup path."""
-    stamp = time.strftime('%Y%m%d-%H%M%S')
-    dst, n = f'{path}.{tag}-{stamp}', 1
-    while os.path.lexists(dst):
-        dst, n = f'{path}.{tag}-{stamp}-{n}', n + 1
-    shutil.copy2(path, dst)
-    return dst
 
 
 def say(kind, what):
@@ -233,7 +233,7 @@ def install_dsh_hooks(check):
         if check:
             say('would', f'mount the hooks bridge in {patch}')
             continue
-        backup(patch, 'bak-shared-agent-layer')
+        backup(patch, '.bak-shared-agent-layer')
         open(patch, 'a').write(row)
         say('mounted', f'hooks bridge in {os.path.relpath(patch, HOME)}')
 
@@ -264,7 +264,7 @@ def install_kimi_hooks(check):
         return
     if check:
         return say('would', f'write the hooks block in {path}')
-    backup(path, 'bak-shared-agent-layer')
+    backup(path, '.bak-shared-agent-layer')
     open(path, 'w').write(new)
     say('set', f'hooks block in {os.path.relpath(path, HOME)}')
 
@@ -321,7 +321,7 @@ def install_grok_hooks(check):
         return say('KEPT', f'{path}: the managed block would not parse ({e}) — fix the file by hand')
     if check:
         return say('would', f'write the hooks block in {path}')
-    backup(path, 'bak-shared-agent-layer')
+    backup(path, '.bak-shared-agent-layer')
     open(path, 'w').write(new)
     say('set', f'hooks block in {os.path.relpath(path, HOME)}')
 
@@ -338,7 +338,7 @@ def edit_json(path, change, check, what):
     if check:
         return say('would', f'{what} in {path}')
     if os.path.exists(path):
-        backup(path, 'bak-ui')
+        backup(path, '.bak-ui')
     tmp = path + '.tmp'
     with open(tmp, 'w') as f:
         f.write(json.dumps(data, indent=2, ensure_ascii=False) + '\n')
@@ -381,7 +381,7 @@ def set_codex_tui(check):
         return
     if check:
         return say('would', f'set [tui] {", ".join(CODEX_TUI)} in {path}')
-    backup(path, 'bak-ui')
+    backup(path, '.bak-ui')
     open(path, 'w').write('\n'.join(new))
     say('set', f'[tui] {", ".join(CODEX_TUI)} in {path}')
 
@@ -415,8 +415,30 @@ def install_ui(check):
                 if rule not in allow:
                     allow.append(rule)
                     changed = True
+            env = d.get('env')
+            if not isinstance(env, dict):
+                env = d['env'] = {}
+            for key, value in CLAUDE_ENV.items():
+                if env.get(key) != value:
+                    env[key] = value
+                    changed = True
+            hooks = d.get('hooks')
+            if not isinstance(hooks, dict):
+                hooks = d['hooks'] = {}
+            for event, matcher, cmd, timeout in CLAUDE_HOOKS:
+                groups = hooks.get(event)
+                if not isinstance(groups, list):
+                    groups = hooks[event] = []
+                if any(isinstance(h, dict) and h.get('command') == cmd
+                       for g in groups if isinstance(g, dict) for h in g.get('hooks') or []):
+                    continue
+                group = {'matcher': matcher} if matcher else {}
+                group['hooks'] = [{'type': 'command', 'command': cmd, 'timeout': timeout}]
+                groups.append(group)
+                changed = True
             return changed
-        edit_json(os.path.join(home, 'settings.json'), claude_settings, check, 'statusLine, theme + Codex MCP allow')
+        edit_json(os.path.join(home, 'settings.json'), claude_settings, check,
+                  'statusLine, theme, Codex MCP allow, auto-compact env + reset hooks')
     set_codex_tui(check)
 
 
@@ -456,6 +478,32 @@ def git_ignore_locally(repo, name, check):
     say('ignored', f'{name} in {os.path.relpath(exclude, HOME)}')
 
 
+
+def backup(path, suffix):
+    """Copy path to path+suffix once; a later run keeps that first copy and adds a timestamped one beside it."""
+    dest = path + suffix
+    if os.path.exists(dest):
+        dest += time.strftime('-%Y%m%d-%H%M%S')
+    shutil.copy2(path, dest)
+
+
+IMPORT_AGENTS = re.compile(r'(?:^|\s)@AGENTS\.md\b')
+
+
+def claude_only_lines(claude_md):
+    """How many lines CLAUDE.md adds beside an @AGENTS.md import, or None when it does not import AGENTS.md.
+
+    create-next-app (and some umbrella folders) keep the briefing in a real AGENTS.md and import it from CLAUDE.md.
+    Codex already reads that AGENTS.md, and a link back to CLAUDE.md would loop, so only the added lines are missed."""
+    try:
+        text = open(claude_md).read()
+    except OSError:
+        return None
+    if not IMPORT_AGENTS.search(text):
+        return None
+    return sum(1 for l in text.splitlines() if l.strip() and l.strip() != '@AGENTS.md')
+
+
 def install_project_rules(roots, check):
     """Every repo with a CLAUDE.md gets an AGENTS.md link to it, so Codex loads the same project briefing."""
     for root in roots:
@@ -471,10 +519,16 @@ def install_project_rules(roots, check):
                 # .sync-agents-skip opts a folder out, e.g. a CLAUDE.md that is a template, not a project briefing
                 if not os.path.exists(claude_md) or os.path.exists(os.path.join(repo, '.sync-agents-skip')):
                     continue
+                agents_md = os.path.join(repo, 'AGENTS.md')
+                extra = claude_only_lines(claude_md)
+                if extra is not None and os.path.isfile(agents_md) and not os.path.islink(agents_md):
+                    if extra:              # a skill list is fine here; project rules belong in AGENTS.md
+                        say('imports', f'{claude_md} imports AGENTS.md and adds {extra} lines outside models never read')
+                    continue               # a real briefing, not our link: nothing to link, nothing to git-ignore
                 top = git(repo, 'rev-parse', '--show-toplevel')
                 if not top or os.path.realpath(top) != os.path.realpath(repo):
                     continue                       # only a repo's own top level, never a subfolder or umbrella
-                link(claude_md, os.path.join(repo, 'AGENTS.md'), check)
+                link(claude_md, agents_md, check)
                 git_ignore_locally(repo, 'AGENTS.md', check)
 
 
@@ -508,9 +562,12 @@ def main():
     if a.ui or a.only == 'ui':
         install_ui(a.check)
     kept = [c for c in changes if c[0] == 'KEPT']
-    if len(kept) == len(changes):
+    imports = [c for c in changes if c[0] == 'imports']
+    if len(kept) + len(imports) == len(changes):
         print('every agent is in sync with the shared layer'
-              + (f', except {len(kept)} file(s) KEPT above because they differ — review those by hand' if kept else ''))
+              + (f', except {len(kept)} file(s) KEPT above because they differ — review those by hand' if kept else '')
+              + (f'; {len(imports)} CLAUDE.md file(s) add lines beside their @AGENTS.md import (fine for a Claude '
+                 f'skill list; move project rules into AGENTS.md)' if imports else ''))
     elif not a.check and any('hooks.json' in w and k == 'linked' for k, w in changes):
         print('\nNow launch `codex` once interactively and approve the hooks when it asks. '
               'Until you do, codex exec hangs on an untrusted hooks.json.')

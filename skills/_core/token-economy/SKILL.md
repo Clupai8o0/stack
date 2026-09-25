@@ -13,13 +13,13 @@ judged by Opus 5 and Codex. Full results: `docs/routing.md`.
 
 | Work | Model, effort | Measured |
 |---|---|---|
-| Default for real work: audits, reviews, fixes, drafting, research | `claude-opus-5`, **low** | 96-100% on every scored task, writing 8.0/10, **$0.33/task** |
-| Text a reviewer, client or mentor reads; final judge | `claude-opus-5`, **high** | best writing 8.8/10, $0.53/task |
+| Default for real work: audits, reviews, fixes, drafting, research | `claude-opus-5-5`, **low** | Opus 5 low at this effort: 96-100% on every scored task, writing 8.0/10, **$0.33/task**; 5.5 matched it on the bake-off at 22% less cost but has not been re-run at low effort |
+| Text a reviewer, client or mentor reads; final judge | `claude-opus-5-5`, **high** | best writing 8.8/10, $0.53/task |
 | Mechanical work where a test or script decides pass/fail | `claude-sonnet-5`, low | 100% when tests decide, $0.24; missed 25% of review defects, invents facts in prose |
 | One-line lookups | do it inline, no agent | every agent pays ~30-50k start-up tokens (~$0.15-0.30 on Opus) |
 
-Do not use for subagents: Opus 5 at xhigh/max (2.7x cost, no meaningful gain), Opus 4.8 (worse, 2.3x
-cost), Fable 5.1 (no meaningful gain, 2-3x cost), Haiku 4.5 (missed 62% of review defects).
+Do not use for subagents: Opus 5/5.5 at xhigh/max (2.7x cost, no meaningful gain), Opus 4.8 (worse, 2.3x
+cost), Fable 5.1 as a worker or reviewer (no meaningful gain, 2-3x cost; keep it only for the hardest coding tasks), Haiku 4.5 (missed 62% of review defects).
 
 ## 2. Rules
 
@@ -29,10 +29,17 @@ cost), Fable 5.1 (no meaningful gain, 2-3x cost), Haiku 4.5 (missed 62% of revie
    review cost $0.78 versus $0.33 for Opus low alone, at the same quality. A review redoes the work.
 3. **Fewer, bigger agents.** Never spawn an agent for something one tool call answers.
 4. **Keep agents short.** Split any job past ~100 steps. Long agents re-read their whole
-   context every step, and 10 long agents were 71% of past Opus 5 usage.
+   context every step, and 10 long agents were 71% of past Opus 5 usage. In the week to 23 Sep, 59% of all
+   Claude spend was on calls past 200k context, so every account now auto-compacts at 250k (`sync-agents.py`
+   sets `CLAUDE_CODE_AUTO_COMPACT_WINDOW`). Weekly check: `scripts/usage_report.py`.
 5. **Ultracode only for audits where a miss is costly, or wide fan-out.** Otherwise use
    normal effort and ask for a workflow. Even under ultracode, pin effort per stage.
 6. **Independent review goes outside Claude** (section 3). It costs almost no Claude usage.
+7. **Execution can run on the cx account** to spend its quota instead of main's (same models, any folder,
+   since it is still Claude). From main, as a background Bash task:
+   `python3 $CLUPAI_HOME/skills/_core/token-economy/scripts/cx_run.py PROMPT_FILE --cwd DIR [--effort low] [--read-only]`.
+   Prefer it over an Agent call for a self-contained job when main's usage is the tighter one. It starts cold
+   (no context from main), so brief it like a subagent. Don't edit the same files from main while it runs.
 
 ## 3. Outside models: second opinions, reviews, fallbacks
 
@@ -41,15 +48,17 @@ real bugs, and a blind code-quality review; results in `docs/bake-off.md`):
 
 | Model | Route | Role | Evidence |
 |---|---|---|---|
-| Opus 5 | Claude Code | **Main worker** | 10/10 tasks; second-cleanest code; ~25% cheaper than Fable |
-| Fable 5.1 | Claude Code | Hardest tasks, final review | 10/10; cleanest code in the blind quality review |
-| GPT-6 Astra | `codex` (pass `-c model_reasoning_effort=high`) | **Independent reviewer**, fast long runs | 10/10; 3-5x faster on long tasks; caught the only bug no one else found |
+| Opus 5.5 | Claude Code | **Main worker** (since 23 Sep) | 10/10 tasks for $16.12 (Opus 5 $20.60); best Claude reviewer, 8/17 bugs; ~30% more wall time; code quality not yet judged |
+| Opus 5 | Claude Code | Fallback if 5.5 is unavailable | 10/10 tasks, $20.60; second-cleanest code |
+| Fable 5.1 | Claude Code | Hardest coding tasks only (**not review**, since 23 Sep) | 10/10; cleanest code in the blind quality review; as reviewer 4-6/17 bugs vs Opus 5.5 high 8-10/17 over 2 runs, at ~2.7x the cost and 0 bugs Opus missed |
+| GPT-6 Astra | `codex` (read-only runs are lean: no plugins or MCP, medium effort; `--codex-effort high` for client work) | **Independent reviewer for risky changes** (tiered since 24 Sep), fast long runs | 10/10; 3-5x faster on long tasks; caught the only bug no one else found |
 | DeepSeek V4 Flash | `dsh:deepseek-flash` | **Default bulk worker**, China worker, cheap third reviewer | 10/10 for ~$1.50 total; best reviewer (9/17 bugs); code needs a review pass (more defects than Claude) |
 | Gemini 3.8 Flash (High) | `agy:gemini-3.8-flash-high` | Free fast drafts and short reads | 8/9 coding, 3-6 min each; 5/17 in review, some confident wrong claims |
 | Grok 4.7 | `grok:grok-4.7` (Grok Build, Grok plan quota; personal folders only) | **Second reviewer beside Codex**; stand-in when Codex is out of quota | 7/17 in review (Astra 5); 6/6 short coding via OpenRouter; slower than Astra, found no rules bugs |
 | Kimi K3 | `kimi:kimi-k3` | **Backup only**, if DeepSeek is down (China) | 10/10 but slowest, ~10x Flash's cost, most defects in the quality review, 4/17 in review, nothing unique |
 
-Review trio: **Astra + Fable + DeepSeek Flash**; together they found every bug any reviewer found.
+Review trio: **DeepSeek Flash + Opus 5.5 + Astra** (Flash 9/17, Opus 5.5 8, Grok 4.7 7, Fable 6, Astra 5; together they cover every bug any reviewer found)
+Old trio, before Opus 5.5 and Grok 4.7 were tested: **Astra + Fable + DeepSeek Flash**; together they found every bug any reviewer found.
 Dropped: DeepSeek V4 Pro (7/10; its tool stopped partway twice), OpenCode Go (funds ran out in a day; use direct
 keys), OpenCode Zen, Haiku 4.5, MiniMax direct. GLM-5.3, Grok 4.6 and MiniMax M3 go through OpenRouter for second
 opinions only (`opencode:openrouter/<vendor>/<model>`, key in `OPENROUTER_API_KEY`).
@@ -64,10 +73,13 @@ python3 $CLUPAI_HOME/scripts/second_opinion.py PROMPT_FILE \
 It tries each route in order and moves on when one fails or is out of quota. It prints the
 answer on stdout and one JSON usage line per attempt on stderr.
 
+Second-opinion benchmark, 17 Sep 2026, on that day's routes. OpenCode Go and Zen are gone: read `opencode-go` as
+`opencode:openrouter/<vendor>/<model>` for GLM, Grok, Qwen and MiniMax. DeepSeek now runs on `dsh:`, Kimi on `kimi:`.
+
 | Route | Review (4 planted) | Audit | Writing /10 | $/task* | Time | Best for |
 |---|---|---|---|---|---|---|
 | Codex (`codex`, ChatGPT plan) | 100% | 100% | judge only | own quota | 100-240s | default second opinion |
-| DeepSeek V4 Pro (`opencode-go`) | 100% | 100% | 5.0 | **$0.06** | 180s | cheap review and verification |
+| DeepSeek V4 Pro (`opencode-go`) | 100% | 100% | 5.0 | **$0.06** | 180s | dropped 22 Sep: its tool quit mid-task twice |
 | GLM 5.3 (`opencode-go`) | 100% | 100% | **7.5** | $0.27 | 330s | review and writing |
 | Kimi K3 (ran on `opencode-go`; now `kimi`) | 100% | 100% | 6.0 | $0.28 | 160s | review, fewest tokens |
 | Gemini 3.8 Flash (`agy`) | 100% | 100% | 5.5 | Google quota | 175s | review when others are out |
@@ -78,7 +90,7 @@ answer on stdout and one JSON usage line per attempt on stderr.
 | Grok Build 0.1 (`opencode` Zen, dropped) | 75% | 100% | 5.5 | $0.32 | 220s | not recommended |
 | MiniMax M3 (`opencode-go`) | 62% | 100% | 4.0 | $0.05 | 105s | not for review |
 
-*List-price equivalent. OpenCode Go is a $10/month plan with caps. Claude Opus 5 low on
+*List-price equivalent. OpenCode Go was a $10/month plan with caps. Claude Opus 5 low on
 the same tasks: review 100%, writing 6.8 in the same judging batch, $0.33, 20-40s.
 
 **DeepSeek goes through `dsh`, not OpenCode** (user's call, 19 Sep 2026). `dsh` is DeepSeek's own CLI
@@ -97,9 +109,15 @@ OpenRouter instead: `opencode:openrouter/<vendor>/<model>`, key `OPENROUTER_API_
 
 **Default ladders** (built into the script):
 - review or verification: `codex → dsh:deepseek-flash → agy:gemini-3.8-flash-high → kimi:kimi-k3` (bake-off 22 Sep: Flash found the most real bugs)
-- bulk or mechanical work (personal/open code): `dsh:deepseek-flash`, then a review pass; hard or long tasks: Opus or Fable (Kimi only if DeepSeek is down)
-- writing second draft: `glm-5.3 → grok-4.6 → qwen3.8-max`, and Claude Opus 5 still writes the final text
-- Policy filters the ladder: confidential keeps Codex only, open adds dsh, kimi and OpenCode, personal adds Antigravity (Gemini).
+- **Code review is tiered (24 Sep 2026)** and always runs on the diff: `second_opinion.py - --cwd REPO --review [--base BASE] --ladder ...`.
+  Every change: `dsh:deepseek-flash` (+ `grok:grok-4.7` on personal folders); confidential folders: own tests and a read of the diff.
+  Risky changes (auth, security, rules, payments, migrations or deletes, concurrency, client deliverables, >~300 lines) also get `codex`.
+  Why: in Sep 2026 Codex spent 352M input tokens in 14 interactive coding sessions and 267M in 302 MCP reviews
+  (median 553k input, ~19k of it fixed overhead on every call); `--review` cuts exploration and the lean flags cut the overhead.
+- bulk or mechanical work (personal/open code): `dsh:deepseek-flash`, then a review pass; hard or long tasks: Opus 5.5, or Fable for the hardest (Kimi only if DeepSeek is down)
+- writing second draft (open/personal folders, pass with `--ladder`): `opencode:openrouter/z-ai/glm-5.3 →
+  opencode:openrouter/x-ai/grok-4.6 → opencode:openrouter/qwen/qwen3.8-max-0902`, and Claude Opus 5.5 still writes the final text
+- Policy filters the ladder: confidential keeps Codex only, open adds dsh, kimi and OpenCode, personal adds Antigravity (Gemini) and Grok Build (`grok`).
   OpenCode's policy allows using prompts to improve its service, and some upstream providers may train on inputs.
 
 ## 3b. Project model policy and delegated coding
@@ -109,9 +127,9 @@ The policy comes from the folder: `$CLUPAI_HOME/model-policy.json`.
 
 | Policy | Folders | Coding by | Review by |
 |---|---|---|---|
-| confidential | client work, private notes, anything unlisted | Claude, Opus 5 low workers | Codex |
-| open | open-source and study repos | Claude, or DeepSeek V4 Flash via `dsh` in a disposable worktree (`--write`) | Codex, then DeepSeek V4 Flash |
-| personal | your own side projects | DeepSeek V4 Flash via `dsh` (or Gemini via `agy` for quick free drafts) in a worktree; Claude runs the tests and reads the diff | Codex, DeepSeek V4 Flash, Gemini 3.8 Flash |
+| confidential | client work, private notes, anything unlisted | Claude, Opus 5.5 low workers | Own tests + diff read; Codex on risky changes (Opus 5.5 high while Codex is out) |
+| open | open-source and study repos | Claude, or DeepSeek V4 Flash via `dsh` in a disposable worktree (`--write`) | DeepSeek V4 Flash; Codex on risky changes |
+| personal | your own side projects | DeepSeek V4 Flash via `dsh` (or Gemini via `agy` for quick free drafts) in a worktree; Claude runs the tests and reads the diff | DeepSeek V4 Flash and Grok 4.7; Codex on risky changes (Grok alone while Codex is out) |
 
 Coding benchmark (17 Sep 2026): a feature with 31 hidden tests plus 4 planted bugs with 29 tests, 2 runs each.
 
@@ -139,8 +157,8 @@ Grok 4.6 88%. Outside models are 3-10x slower, so run them in parallel worktrees
 ## 4. Workflow snippet
 
 ```js
-const WORK  = { model: 'claude-opus-5',   effort: 'low'  }  // default
-const JUDGE = { model: 'claude-opus-5',   effort: 'high' }  // sensitive text, final call
+const WORK  = { model: 'claude-opus-5-5', effort: 'low'  }  // default
+const JUDGE = { model: 'claude-opus-5-5', effort: 'high' }  // sensitive text, final call
 const MECH  = { model: 'claude-sonnet-5', effort: 'low'  }  // only when a test decides
 await agent(prompt, { ...WORK, label: 'audit:claims' })
 ```

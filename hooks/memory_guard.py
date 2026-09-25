@@ -8,8 +8,7 @@
 """
 import glob, json, os, re, signal, subprocess, sys, time
 
-REGISTRIES = [os.path.expanduser('~/.claude/sessions'), os.path.expanduser('~/.claude-exec/sessions'),
-              os.path.expanduser('~/.claude-alt/sessions'),  # main, cx, cm
+REGISTRIES = [os.path.expanduser('~/.claude/sessions'), os.path.expanduser('~/.claude-exec/sessions'),  # main, cx
               os.path.expanduser('~/.codex/agent-sessions'),  # codex   } none of these four writes a registry,
               os.path.expanduser('~/.local/state/opencode/agent-sessions'),  # opencode } so agent_hook.py writes
               os.path.expanduser('~/.dsh/agent-sessions'),  # dsh     } one for them
@@ -122,7 +121,7 @@ def sessions(verify=False):
     for reg in REGISTRIES:
         acct = ('codex' if '.codex' in reg else 'opencode' if 'opencode' in reg else 'dsh' if '.dsh' in reg
                 else 'kimi' if '.kimi-code' in reg else 'grok' if '.grok' in reg
-                else 'cx' if 'claude-exec' in reg else 'cm' if 'claude-alt' in reg else 'main')
+                else 'cx' if 'claude-exec' in reg else 'main')
         for f in glob.glob(reg + '/*.json'):
             try:
                 s = json.load(open(f))

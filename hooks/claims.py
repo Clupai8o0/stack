@@ -41,8 +41,7 @@ except Exception:  # without it, fall back to a bare pid check rather than break
 
 EXPIRE_H = 4
 NOTE_EVERY = 3  # turns with edits a session may take before the Stop hook asks for a fresh note
-REGISTRIES = [os.path.expanduser('~/.claude/sessions'), os.path.expanduser('~/.claude-exec/sessions'),
-              os.path.expanduser('~/.claude-alt/sessions'),  # main, cx, cm
+REGISTRIES = [os.path.expanduser('~/.claude/sessions'), os.path.expanduser('~/.claude-exec/sessions'),  # main, cx
               os.path.expanduser('~/.codex/agent-sessions'),  # codex   } none of these four writes a registry,
               os.path.expanduser('~/.local/state/opencode/agent-sessions'),  # opencode } so agent_hook.py writes
               os.path.expanduser('~/.dsh/agent-sessions'),  # dsh     } one for them
@@ -378,6 +377,13 @@ def pretool():
         command = ti.get('command') if isinstance(ti.get('command'), str) else ''
         check = lambda: g.evaluate(command, cwd, sid)
         targets = lambda: bash_targets(command, cwd)
+        if re.search(r'serve|vite|next dev|emulators|expo|react-native|nodemon|webpack|rails|puma|run dev|start', command):
+            try:  # tell the stacks reaper this live session owns the dev server it is starting
+                st = sibling('stacks')
+                if st:
+                    st.note_launch(sid, command, cwd)
+            except Exception:
+                pass
     else:
         target = ti.get('file_path') or ti.get('notebook_path')
         check = lambda: g.evaluate_path(target, sid) if isinstance(target, str) else None

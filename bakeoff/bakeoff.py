@@ -31,6 +31,7 @@ KIMI_FLOOR = 0.40    # stop starting kimi runs below this balance
 # contestant -> (lane, kind, model). One lane runs its jobs one at a time, so balance diffs are per run.
 CONTESTANTS = {
     'opus':    ('claude', 'claude', 'claude-opus-5'),
+    'opus55':  ('claude', 'claude', 'claude-opus-5-5'),   # released 2026-09-23
     'fable':   ('claude', 'claude', 'claude-fable-5-1'),
     'astra':   ('codex', 'codex', 'gpt-6-astra'),
     'kimi':    ('kimi', 'so', 'kimi:kimi-k3'),

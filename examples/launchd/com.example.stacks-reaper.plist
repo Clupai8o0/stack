@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Every 10 min: stops Docker stacks, simulators and dev servers nobody has leased (hooks/stacks.py reap). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.stacks-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__CLUPAI_HOME__/hooks/stacks.py</string>
+    <string>reap</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd starts with a bare PATH; docker, colima and xcrun must be findable. -->
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>CLUPAI_HOME</key><string>__CLUPAI_HOME__</string>
+  </dict>
+  <key>StartInterval</key><integer>600</integer>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>__HOME__/.local/state/claude-claims/stacks-reaper.out</string>
+  <key>StandardErrorPath</key><string>__HOME__/.local/state/claude-claims/stacks-reaper.err</string>
+</dict>
+</plist>

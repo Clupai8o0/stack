@@ -2,6 +2,10 @@
 
 **Opus 5 at low effort is the best default subagent. Push second opinions and reviews to Codex or a cheap outside model.**
 
+> **Update, 23 Sep 2026:** Opus 5.5 has since replaced Opus 5 as the default worker (same pass rate, 22% cheaper in
+> the [bake-off](bake-off.md)) and Fable 5.1 as the Claude reviewer. This benchmark was not re-run on Opus 5.5, so the
+> numbers below are Opus 5's. The effort findings (pin low, avoid xhigh) still apply.
+
 ## Method
 
 - **Tasks:** five, built from real study and open-source work, with planted bugs and defects so they could be scored: fact-check (18 claims), bug fix (4 planted bugs, 29 hidden
@@ -28,6 +32,7 @@
 - Sonnet 5 invents links between facts at every effort level.
 - Sonnet does the work, Opus low reviews: 100%, but $0.78. Opus low alone: same score, $0.33.
 - Every agent pays setup tokens before it does anything (estimate: 30-50k). Fewer installed skills and MCP servers cut that for every agent.
+- Fable 5.1 was later dropped as a worker and reviewer: no gain at 2-3x the cost. It stays only for the hardest coding tasks.
 
 ## Outside models
 

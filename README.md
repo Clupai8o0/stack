@@ -1,4 +1,4 @@
-# clupai-skills
+# cstack
 
 **One shared rules, hooks and skills layer for Claude Code, Codex, OpenCode, DeepSeek, Kimi and Grok Build, tuned by measurement to spend fewer tokens.**
 
@@ -12,11 +12,12 @@ Measured Sep 2026. The routing benchmark used tasks built from real work with pl
 
 | Rule | Measured effect |
 |---|---|
-| Subagents run Opus 5 at **low** effort, always pinned | 96-100% on every scored task; $0.33/task vs $0.90 at xhigh (2.7x), no meaningful gain |
+| Subagents run Opus at **low** effort, always pinned (measured on Opus 5) | 96-100% on every scored task; $0.33/task vs $0.90 at xhigh (2.7x), no meaningful gain |
 | No "cheap model works, Opus reviews" | $0.78 vs $0.33 for Opus low alone, same score |
 | Reviews go to Codex or DeepSeek, outside Claude | Almost no Claude usage; DeepSeek V4 Flash found the most real bugs (9 of 17) of the models tested (Opus was not run on review) |
 | Bulk coding on DeepSeek V4 Flash, then a review pass | 10/10 tasks for ~$1.50 vs $20.60 on Opus 5 |
 | Reset context near 200k | A call at 600-900k costs ~3x a call at 200k (estimate: $0.38 vs $0.13) |
+| Auto-compact at 250k; agents reset themselves at break points | 59% of one week's Claude spend was on calls past 200k context |
 | Do lookups inline, not in an agent | Every agent pays setup tokens first (estimate: 30-50k) |
 | Skills load on demand, not all installed | The skill listing cost tokens in every agent (estimate: ~7.5k before cleanup) |
 | Memories recalled per prompt, not preloaded | `MEMORY.md` shrinks to pinned notes; the rest arrives when relevant |
@@ -40,7 +41,7 @@ flowchart LR
   SO -->|sandboxed, policy-checked, fallback ladder| AG
 ```
 
-More: [docs/architecture.md](docs/architecture.md).
+More: [docs/architecture.md](docs/architecture.md), and per agent (rules, skills, hooks, quirks): [docs/agents.md](docs/agents.md).
 
 ## What each hook does
 
@@ -54,6 +55,36 @@ More: [docs/architecture.md](docs/architecture.md).
 | `hooks/effort_gate.py` | Makes the model state the effort a task needs, and ask you to change it early in a session |
 | `hooks/agent_hook.py` | Lets Codex, OpenCode, dsh, kimi and Grok Build run the same hooks as Claude Code |
 | `hooks/codex_hook.py` | Shim to `agent_hook.py` for Codex |
+| `hooks/stacks.py` | Shares one Docker stack, simulator or emulator between sessions by lease; a reaper stops the ones nobody uses |
+| `hooks/reset.py` | Lets a long-running session clear or compact its own context at a break point (kitty only) |
+| `hooks/session_mirror.py` | Mirrors session entries between Claude accounts so they can message each other |
+
+## Scheduled jobs (launchd)
+
+| Job | Every | Runs |
+|---|---|---|
+| `com.example.session-mirror` | 15 s | `hooks/session_mirror.py sync`: lets sessions in different Claude accounts message each other |
+| `com.example.stacks-reaper` | 10 min | `hooks/stacks.py reap`: stops Docker stacks, simulators and dev servers nobody leases |
+| `com.example.claude-usage-report` | Saturday 09:00 | `scripts/usage_report.py --write`: one row of weekly spend in `claude-usage.md` |
+
+Templates are in `examples/launchd/`. Install one (replace `NAME`):
+
+```bash
+sed -e "s|__CLUPAI_HOME__|$CLUPAI_HOME|g" -e "s|__PYTHON__|$(command -v python3)|g" -e "s|__HOME__|$HOME|g" \
+  examples/launchd/com.example.NAME.plist > ~/Library/LaunchAgents/com.example.NAME.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.NAME.plist
+```
+
+## Docs
+
+| Doc | What |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How the layer fits together, shared state, design choices |
+| [docs/agents.md](docs/agents.md) | One row per agent CLI: how it gets rules, skills and hooks, what it is for, its quirks |
+| [docs/token-economy.md](docs/token-economy.md) | The measured rules for spending fewer tokens, including context size |
+| [docs/routing.md](docs/routing.md) | Model routing benchmark (17 Sep 2026) |
+| [docs/bake-off.md](docs/bake-off.md) | Bake-off on real commits, and the current role per model |
+| [docs/tool-trials.md](docs/tool-trials.md) | Workflow tools tried, the verdict on each, and where the keepers are used |
 
 ## What else is here
 
@@ -62,6 +93,7 @@ More: [docs/architecture.md](docs/architecture.md).
 | `rules/CLAUDE.md` | Global rules template: claims, queues, guardrails, memory, token economy, second-model review, short documents, close lines |
 | `skills/_core/token-economy` | Picks model, effort and route for every subagent and second opinion |
 | `skills/_core/tool-scoping` | Puts skills, MCP servers and keys only where they are used |
+| `skills/production-ready` | Audits an app, API, site, mobile app or CLI against a 3-tier production checklist (16 areas) and ranks the gaps |
 | `skills/_core/vault-skills` | Loads a library skill on demand. The repo ships only `_core`; the library (`skills/<category>/`) is yours to add |
 | `scripts/second_opinion.py` | Calls outside models through one sandboxed, policy-checked fallback ladder |
 | `scripts/sync-agents.py` | Generates each agent's `AGENTS.md` and links skills and hooks |
@@ -69,7 +101,7 @@ More: [docs/architecture.md](docs/architecture.md).
 | `output-styles/on-the-go.md` | Replies for reading on a phone: answer first, decisions as a checklist, recap at the end |
 | `ui/` | Shared statusline and palette |
 | `bakeoff/` | Generic harness to run your own model bake-off on your repo's history |
-| `examples/` | `model-policy`, `guardrails` and Claude `settings` hooks to start from |
+| `examples/` | `model-policy`, `guardrails`, `stacks` and Claude `settings` hooks to start from; `launchd/` jobs (below) |
 | `tools/export.py` | How this repo is refreshed from the private copy, with a leak scan |
 | `.sync-agents-skip` | Put this empty file in a folder so `sync-agents.py --repos` never links an `AGENTS.md` there (`rules/` has one) |
 
@@ -95,8 +127,8 @@ export CLUPAI_HOME=~/clupai        # add to your shell profile
 
 | Model | Route | Role |
 |---|---|---|
-| Opus 5 | Claude Code | Main worker, low effort for subagents |
-| Fable 5.1 | Claude Code | Hardest tasks, final review |
+| Opus 5.5 | Claude Code | Main worker (low effort for subagents) and final reviewer (high effort) |
+| Fable 5.1 | Claude Code | Hardest coding tasks only |
 | GPT-6 Astra | `codex` | Independent reviewer, fast on long tasks |
 | DeepSeek V4 Flash | `dsh:deepseek-flash` | Bulk worker and reviewer; always follow its code with a review |
 | Gemini 3.8 Flash | `agy:gemini-3.8-flash-high` | Free quick drafts and reads (plan quota) |
@@ -107,9 +139,10 @@ Bake-off in one line each (10 real tasks from a production React Native + Fireba
 
 - Every top model passed 10/10, so speed, cost and code quality decided.
 - DeepSeek V4 Flash: 10/10 for ~$1.50 and the most review bugs found, but 34-54% more defects than Claude.
-- Fable 5.1 wrote the cleanest code; Opus 5 was close and ~25% cheaper.
+- Opus 5.5 (23 Sep): 10/10 for $16.12, 22% less than Opus 5, and found 8-10 of 17 review bugs vs Fable 5.1's 4-6 at ~37% of the cost.
+- Fable 5.1 wrote the cleanest code, so it keeps the hardest coding tasks only.
 - Grok Build: 10/10 coding, 2 of 3 bugs on the one review case run. Grok 4.7 via OpenRouter found 7 of 17.
-- GPT-6 Astra + Fable + DeepSeek Flash together found every bug any reviewer found.
+- Review trio now: DeepSeek Flash + Opus 5.5 + GPT-6 Astra (before 23 Sep, Fable held Opus 5.5's seat).
 - Every model missed most security-rules bugs. Those still need a human.
 
 ## Limits
